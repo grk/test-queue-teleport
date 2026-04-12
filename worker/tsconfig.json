@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "types": [
+      "@cloudflare/workers-types/2023-07-01",
+      "@cloudflare/vitest-pool-workers"
+    ]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

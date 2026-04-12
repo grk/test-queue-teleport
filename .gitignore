@@ -1,0 +1,14 @@
+# Editor / IDE
+.claude/
+.ruby-lsp/
+.vscode/
+.idea/
+
+# Docs (local only — specs, plans, superpowers)
+docs/
+
+# Logs
+*.log
+
+# OS
+.DS_Store

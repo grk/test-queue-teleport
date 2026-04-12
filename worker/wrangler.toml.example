@@ -1,0 +1,17 @@
+name = "tq-teleport"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tq-teleport-db"
+database_id = "<your-database-id>"  # Run: bun wrangler d1 create tq-teleport-db
+
+[durable_objects]
+bindings = [
+  { name = "RELAY", class_name = "TunnelRelay" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TunnelRelay"]

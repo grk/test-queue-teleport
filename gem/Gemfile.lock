@@ -1,0 +1,22 @@
+PATH
+  remote: .
+  specs:
+    test-queue-teleport (0.1.0)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    minitest (5.27.0)
+    rake (13.3.1)
+
+PLATFORMS
+  arm64-darwin-24
+  ruby
+
+DEPENDENCIES
+  minitest (~> 5.0)
+  rake (~> 13.0)
+  test-queue-teleport!
+
+BUNDLED WITH
+   2.7.2

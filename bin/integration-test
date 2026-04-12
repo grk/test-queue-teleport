@@ -1,0 +1,112 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Runs the full teleport stack locally against the production CF relay.
+# Requires TQ_TELEPORT_URL and TQ_TELEPORT_API_KEY in env.
+#
+# Usage: bin/integration-test
+
+require "securerandom"
+
+url = ENV["TQ_TELEPORT_URL"]
+api_key = ENV["TQ_TELEPORT_API_KEY"]
+encryption_key = ENV["TQ_TELEPORT_ENCRYPTION_KEY"]
+
+unless url && api_key
+  $stderr.puts "Error: Set TQ_TELEPORT_URL and TQ_TELEPORT_API_KEY environment variables"
+  exit 1
+end
+
+run_id = "local-#{Time.now.to_i}-#{SecureRandom.hex(4)}"
+test_dir = File.expand_path("../test-project", __dir__)
+puts "=== Integration Test ==="
+puts "URL: #{url}"
+puts "Run ID: #{run_id}"
+puts ""
+
+command = "bundle exec rspec-queue"
+
+# Spawn a process and stream its output with a label prefix
+def spawn_labeled(label, env, *cmd, chdir:)
+  out_r, out_w = IO.pipe
+  pid = Process.spawn(env, *cmd, chdir: chdir, [:out, :err] => out_w)
+  out_w.close
+
+  # Reader thread: prefix each line with label
+  reader = Thread.new do
+    out_r.each_line do |line|
+      $stdout.puts "[#{label}] #{line}"
+      $stdout.flush
+    end
+    out_r.close
+  end
+
+  [pid, reader]
+end
+
+pids = []
+readers = []
+labels = {}
+
+env = {
+  "TQ_TELEPORT_URL" => url,
+  "TQ_TELEPORT_API_KEY" => api_key,
+  "TQ_TELEPORT_RUN_ID" => run_id,
+  "TEST_QUEUE_SPLIT_GROUPS" => "1"
+}
+env["TQ_TELEPORT_ENCRYPTION_KEY"] = encryption_key if encryption_key
+
+# Start master with 1 local worker — leaves work for remote workers via bridge
+master_env = env.merge("TEST_QUEUE_WORKERS" => "1")
+pid, reader = spawn_labeled("master", master_env,
+  "bundle", "exec", "tq-teleport", "serve", "--", *command.split,
+  chdir: test_dir)
+pids << pid
+readers << reader
+labels[pid] = "master"
+
+# Give master a moment to connect
+sleep 2
+
+# Start 2 workers with 2 local processes each
+2.times do |i|
+  worker_env = env.merge("TEST_QUEUE_WORKERS" => "2")
+  pid, reader = spawn_labeled("worker-#{i}", worker_env,
+    "bundle", "exec", "tq-teleport", "connect", "--", *command.split,
+    chdir: test_dir)
+  pids << pid
+  readers << reader
+  labels[pid] = "worker-#{i}"
+end
+
+puts ""
+puts "Started: master (#{pids[0]}), worker-0 (#{pids[1]}), worker-1 (#{pids[2]})"
+puts "Waiting for completion..."
+puts ""
+
+# Wait for all processes
+results = {}
+pids.each do |pid|
+  _, status = Process.waitpid2(pid)
+  results[pid] = status
+end
+
+# Wait for reader threads to finish
+readers.each { |r| r.join(5) }
+
+puts ""
+results.each do |pid, status|
+  label = labels[pid]
+  code = status.exitstatus || "signal #{status.termsig}"
+  puts "[#{label}] exited with code #{code}"
+end
+
+# Report
+all_passed = results.values.all? { |s| s.exitstatus == 0 }
+if all_passed
+  puts "\n=== ALL PASSED ==="
+  exit 0
+else
+  puts "\n=== FAILED ==="
+  exit 1
+end
